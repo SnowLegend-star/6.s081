@@ -95,3 +95,9 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+//excesize1 查看可用内存，单位是B
+uint64 
+sys_checkmem(void){
+  return (uint64)(kfmstat());
+}

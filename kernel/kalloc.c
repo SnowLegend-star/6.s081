@@ -80,3 +80,19 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+// kernel free mem stat 查看可用内存，单位是B
+int
+kfmstat(void)
+{
+    int res = 0;
+    struct run *r;
+    acquire(&kmem.lock);
+    r = kmem.freelist;
+    release(&kmem.lock);
+    while (r) {
+        res += PGSIZE;
+        r = r->next;
+    }
+    return res;
+}
