@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -100,4 +101,35 @@ sys_uptime(void)
 uint64 
 sys_checkmem(void){
   return (uint64)(kfmstat());
+}
+
+//跟踪系统调用情况
+uint64
+sys_trace(void){
+  int mask;
+  if(argint(0,&mask)<0)
+    return -1;
+  myproc()->mask=mask;
+  return 0;
+}
+
+//检查系统的内存和进程信息
+uint64
+sys_sysinfo(void){
+  struct sysinfo sysINFO;
+  struct proc *p=myproc();
+  uint64 sysINFO_user;    //user pointer to struct sysinfo     
+  sysINFO.freemem=kfmstat();  //刚才用sys_checkmem是有问题的
+  sysINFO.nproc=sum_UNUSED();
+
+  // printf("In kernel, available memory: %dB\n", sysINFO.freemem);
+  // printf("In kernel, UNUSED process: %d\n", sysINFO.nproc);
+
+  if(argaddr(0,&sysINFO_user)<0)
+    return -1;
+
+  if(copyout(p->pagetable, sysINFO_user, (char *)&sysINFO, sizeof(sysINFO)) < 0)
+    return -1;
+
+  return 0;
 }

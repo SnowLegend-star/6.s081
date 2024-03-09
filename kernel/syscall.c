@@ -105,6 +105,8 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_checkmem(void);
+extern uint64 sys_trace(void);
+extern uint64 sys_sysinfo(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -129,7 +131,37 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_checkmem] sys_checkmem,
+[SYS_trace]   sys_trace,
+[SYS_sysinfo]    sys_sysinfo,
 };
+
+static const char *syscallsName[] = {
+    [SYS_fork]    "fork",
+    [SYS_exit]    "exit",
+    [SYS_wait]    "wait",
+    [SYS_pipe]    "pipe",
+    [SYS_read]    "read",
+    [SYS_kill]    "kill",
+    [SYS_exec]    "exec",
+    [SYS_fstat]   "fstat",
+    [SYS_chdir]   "chdir",
+    [SYS_dup]     "dup",
+    [SYS_getpid]  "getpid",
+    [SYS_sbrk]    "sbrk",
+    [SYS_sleep]   "sleep",
+    [SYS_uptime]  "uptime",
+    [SYS_open]    "open",
+    [SYS_write]   "write",
+    [SYS_mknod]   "mknod",
+    [SYS_unlink]  "unlink",
+    [SYS_link]    "link",
+    [SYS_mkdir]   "mkdir",
+    [SYS_close]   "close",
+    [SYS_checkmem] "checkmem",
+    [SYS_trace]   "trace",
+};
+
+
 
 void
 syscall(void)
@@ -137,9 +169,12 @@ syscall(void)
   int num;
   struct proc *p = myproc();
 
-  num = p->trapframe->a7;
+  num = p->trapframe->a7;               //num存a7寄存器中得到系统调用的编号
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
+    p->trapframe->a0 = syscalls[num](); //完成系统调用后把相应的返回值存到a0
+    if(p->mask&(1<<num)){               //用mask判断该系统调用是否为用户要求追踪的
+      printf("%d: syscall %s -> %d\n",p->pid,syscallsName[num],p->trapframe->a0);   //可恶的输出格式
+    }
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);

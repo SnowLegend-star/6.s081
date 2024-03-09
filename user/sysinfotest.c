@@ -83,7 +83,9 @@ testcall() {
     printf("FAIL: sysinfo failed\n");
     exit(1);
   }
-
+  //打印sysinfo的信息
+  // printf("In user space, available memory: %dB\n",info.freemem);
+  // printf("In user space, UNUSED process: %d\n",info.nproc);
   if (sysinfo((struct sysinfo *) 0xeaeb0b5b00002f5e) !=  0xffffffffffffffff) {
     printf("FAIL: sysinfo succeeded with bad argument\n");
     exit(1);
@@ -105,19 +107,23 @@ void testproc() {
     exit(1);
   }
   if(pid == 0){
+    printf("*****The children's action*****\n");
     sinfo(&info);
     if(info.nproc != nproc+1) {
       printf("sysinfotest: FAIL nproc is %d instead of %d\n", info.nproc, nproc+1);
       exit(1);
     }
+    printf("*****you pass the children's action*****\n");
     exit(0);
   }
+  printf("*****The parents' action*****\n");
   wait(&status);
   sinfo(&info);
   if(info.nproc != nproc) {
       printf("sysinfotest: FAIL nproc is %d instead of %d\n", info.nproc, nproc);
       exit(1);
   }
+  printf("*****you pass the parents action*****\n");
 }
 
 int

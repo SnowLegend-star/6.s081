@@ -275,7 +275,7 @@ fork(void)
   }
   np->sz = p->sz;
 
-  np->parent = p;
+  np->parent = p;   //p是父进程，np是子进程
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -294,6 +294,8 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
+
+  np->mask=p->mask;
 
   release(&np->lock);
 
@@ -680,11 +682,14 @@ procdump(void)
   };
   struct proc *p;
   char *state;
-
+  int sum=0;
   printf("\n");
   for(p = proc; p < &proc[NPROC]; p++){
-    if(p->state == UNUSED)
-      continue;
+    if(p->state == UNUSED){
+      sum++;
+      continue;      
+    }
+
     if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
       state = states[p->state];
     else
@@ -692,4 +697,18 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+  printf("-------In procdump, UNUSED process: %d-------\n",sum);    //统计UNUSED状态的进程
+}
+
+//遍历进程统计状态为unused的     我是牛马，看错实验要求了
+int
+sum_UNUSED(void){
+  int sum=0;
+  struct proc *p;
+  // procdump();
+  for(p=proc; p<&proc[NPROC]; p++){
+    if(p->state!=UNUSED)                                           
+      sum++;
+  }
+  return sum;
 }

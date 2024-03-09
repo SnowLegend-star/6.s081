@@ -5,6 +5,6 @@
 
 int main(int argc,char* argv[]){
     int res=checkmem();
-    printf("avaiable memory:%d \nKB, %d MB",res);
+    printf("avaiable memory:%d B, %d MB\n",res, res/(1024*1024));
     exit(0);
 }

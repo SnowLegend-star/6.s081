@@ -324,7 +324,7 @@ sfence_vma()
 #define PGSHIFT 12  // bits of offset within a page
 
 #define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))
-#define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
+#define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))    //用于将地址 a 向下舍入到最接近的页面边界
 
 #define PTE_V (1L << 0) // valid
 #define PTE_R (1L << 1)
