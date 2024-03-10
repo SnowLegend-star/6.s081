@@ -28,6 +28,8 @@ countfree()
     }
     n += PGSIZE;
   }
+  // info.freemem=123456;
+  // info.nproc=999;
   sinfo(&info);
   if (info.freemem != 0) {
     printf("FAIL: there is no free mem, but sysinfo.freemem=%d\n",

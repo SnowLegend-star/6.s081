@@ -127,7 +127,9 @@ sys_sysinfo(void){
 
   if(argaddr(0,&sysINFO_user)<0)
     return -1;
-
+  // sysINFO_user=(struct sysinfo)sysINFO_user;
+  // printf("The sysinfo from user space: \n")
+  // printf("available memory: %d",sysINFO_user);
   if(copyout(p->pagetable, sysINFO_user, (char *)&sysINFO, sizeof(sysINFO)) < 0)
     return -1;
 

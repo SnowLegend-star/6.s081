@@ -52,7 +52,7 @@ kvminit()
 void
 kvminithart()
 {
-  w_satp(MAKE_SATP(kernel_pagetable));
+  w_satp(MAKE_SATP(kernel_pagetable));        //开始启动页表，有了地址映射
   sfence_vma();
 }
 
