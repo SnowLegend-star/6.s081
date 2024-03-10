@@ -1,1 +1,4 @@
-7
+7hour 7minites
+看错trace.c要求输出的格式了
+又看错sysinfotest.c要统计的进程状态。原本是要求统计进程状态不为UNUSED的，我写成统计进程状态为UNUSED了。到最后开始怀疑自己是不是代码有问题，汗流浃背。
+God Damn!
