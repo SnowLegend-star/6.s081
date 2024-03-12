@@ -440,3 +440,36 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+//打印页表情况 递归
+int flag=0; //记录递归深度
+void vmprint(pagetable_t pagetable){
+  int i, j;
+    flag++; // 增加递归深度
+
+    for (i = 0; i < 512; i++) {
+        pte_t pte = pagetable[i];
+
+        if (pte == 0) {
+            continue; // 跳过空指针
+        }
+
+        uint64 child = PTE2PA(pte);
+
+        // 打印格式输出
+        for (j = 0; j < flag; j++) {
+            printf("..");
+            if (j < flag - 1) { // 最后一层不输出空格
+                printf(" ");
+            }
+        }
+
+        printf("%d: pte %p pa %p\n", i, pte, child); // 打印PTE的内容
+
+        if ((pte & PTE_V) && ((pte & (PTE_R | PTE_W | PTE_X)) == 0)) {
+            vmprint((pagetable_t)child); // 递归打印下一级页表
+        }
+    }
+
+    flag--; // 减少递归深度
+}
