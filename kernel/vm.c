@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h" //头文件引入的顺序也有问题
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -15,37 +17,78 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+
 /*
  * create a direct-map page table for the kernel.
  */
-void
-kvminit()
+void kvminit(){
+  kernel_pagetable=kvminit_modify();
+}
+
+pagetable_t
+kvminit_modify()
 {
-  kernel_pagetable = (pagetable_t) kalloc();
+  // 为进程创建内核页表
+  pagetable_t kernel_pagetable=(pagetable_t) kalloc();
   memset(kernel_pagetable, 0, PGSIZE);
 
-  // uart registers
-  kvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  // // 将内核页表的内容复制为全局内核页表的内容
+  // memmove(kernel_pagetable, kernel_pagetable, PGSIZE);
+  
+  // 将 uart 寄存器映射到内核页表
+  kvmmap(kernel_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
-  // virtio mmio disk interface
-  kvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  // 将 virtio mmio 磁盘接口映射到内核页表
+  kvmmap( kernel_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
-  // CLINT
-  kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  // 将 CLINT 映射到内核页表
+  kvmmap( kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
-  // PLIC
-  kvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  // 将 PLIC 映射到内核页表
+  kvmmap( kernel_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
-  // map kernel text executable and read-only.
-  kvmmap(KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  // 将内核文本映射到内核页表
+  kvmmap( kernel_pagetable, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
-  // map kernel data and the physical RAM we'll make use of.
-  kvmmap((uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  // 将内核数据和物理 RAM 映射到内核页表
+  kvmmap( kernel_pagetable, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
 
-  // map the trampoline for trap entry/exit to
-  // the highest virtual address in the kernel.
-  kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  // 将 trampoline 映射到内核页表
+  kvmmap( kernel_pagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  return kernel_pagetable;
 }
+
+// pagetable_t
+// kvminit(){
+//     // 为进程创建内核页表
+//   kernel_pagetable=(pagetable_t) kalloc();
+//   memset(kernel_pagetable, 0, PGSIZE);
+
+//   // 将内核页表的内容复制为全局内核页表的内容
+//   memmove(kernel_pagetable, kernel_pagetable, PGSIZE);
+  
+//   // 将 uart 寄存器映射到内核页表
+//   kvmmap(kernel_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+//   // 将 virtio mmio 磁盘接口映射到内核页表
+//   kvmmap( kernel_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+//   // 将 CLINT 映射到内核页表
+//   kvmmap( kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+//   // 将 PLIC 映射到内核页表
+//   kvmmap( kernel_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+//   // 将内核文本映射到内核页表
+//   kvmmap( kernel_pagetable, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+//   // 将内核数据和物理 RAM 映射到内核页表
+//   kvmmap( kernel_pagetable, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+//   // 将 trampoline 映射到内核页表
+//   kvmmap( kernel_pagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+//   return kernel_pagetable;
+// }
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
@@ -115,7 +158,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
 // only used when booting.
 // does not flush TLB or enable paging.
 void
-kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
+kvmmap(pagetable_t kernel_pagetable,uint64 va, uint64 pa, uint64 sz, int perm)
 {
   if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
@@ -132,7 +175,7 @@ kvmpa(uint64 va)
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  pte = walk(myproc()->kernel_pagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -190,12 +233,13 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
-    *pte = 0;
+    *pte = 0;   //这个位置就是取消虚拟地址和物理地址映射的操作
   }
 }
 
 // create an empty user page table.
 // returns 0 if out of memory.
+//创建的用户页表大小也是PGSIZE
 pagetable_t
 uvmcreate()
 {
@@ -395,6 +439,11 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     dst += n;
     srcva = va0 + PGSIZE;
   }
+  // if(copyin_new(pagetable,dst,srcva,len)<0){
+  //   printf("Something wrong when call copyin_new\n");
+  //   return -1;
+  // }
+
   return 0;
 }
 
@@ -439,6 +488,11 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+  // if(copyinstr_new(pagetable,dst,srcva,max)<0){
+  //   printf("Something wrong when call copyinstr_new\n");
+  //   return -1;
+  // }
+  return 0;
 }
 
 //打印页表情况 递归
@@ -472,4 +526,57 @@ void vmprint(pagetable_t pagetable){
     }
 
     flag--; // 减少递归深度
+}
+
+void freewalk_kernel(pagetable_t kernel_pagetable){
+  for(int i=0; i<512; i++){
+    pte_t pte=kernel_pagetable[i];
+    if((pte&PTE_V)&&(pte&(PTE_R|PTE_W|PTE_X))==0){
+      //说明这还不是底层pte
+      uint64 child=PTE2PA(pte);
+      freewalk_kernel((pagetable_t)child);
+      kernel_pagetable[i]=0;
+    }
+    else if(pte&PTE_V){
+      // printf("Something wrong when freewalk_kernel\n");
+      // kfree((void*)(pagetable_t)(PTE2PA(pte)));
+    }
+  }
+  kfree((void*)kernel_pagetable);
+}
+
+//释放进程的内核页表
+void uvmfree_kernel(pagetable_t kernel_pagetable, uint64 sz, uint64 va){
+  if(sz>0)
+    uvmunmap(kernel_pagetable, va, PGROUNDUP(sz)/PGSIZE, 1);
+  freewalk_kernel(kernel_pagetable);
+}
+
+//把进程的用户页表复制到进程的内核页表中
+//return 0表示正常退出，return -1表示异常
+int user2kernel_mappages(pagetable_t kernel_pagetable, pagetable_t pagetable, uint64 va_start, uint64 va_end){
+  pte_t *pte_userpg;
+  va_start=PGROUNDUP(va_start); //虚拟地址的end其实就是普通页表的大小(p->size)，涉及大小进行向上舍入
+  uint64 i, pa;
+  int perm;
+  for(i=va_start; i<va_end; i+=PGSIZE){
+    if((pte_userpg=walk(pagetable, i, 0))==0){
+      printf("error: the pte is 0\n");
+      return -1;      
+    }
+
+    
+    //如果普通页表的这个pte不为空
+    if(*pte_userpg & PTE_V){
+      pa=PTE2PA(*pte_userpg);   //先得到这个pte的物理地址pa，再把物理地址pa和内核页表的pte进行映射
+      perm=(*pte_userpg) & 0x3FF;  //不是pxmask而是0x3FF
+      perm=perm & (~PTE_U);  //把PTE_U置为0
+      if(mappages(kernel_pagetable, i, va_end, pa, perm)<0){
+        printf("Something wrong when call user2lkernel_mappages\n");
+        return -1;
+      }
+    }
+
+  }
+  return 0;
 }

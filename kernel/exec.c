@@ -20,6 +20,8 @@ exec(char *path, char **argv)
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
+  // pagetable_t kernel_pagetable, old_kernel_pagetable;
+  // uint64 old_kstack;
 
   begin_op();
 
@@ -120,10 +122,27 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  // //删除老旧的内核页表创建新的内核页表
+  // old_kernel_pagetable=p->kernel_pagetable;
+  // kernel_pagetable=kvminit_modify();
+  // p->kernel_pagetable=kernel_pagetable;
+  // old_kstack=p->kstack;
+  // proc_freekernelpagetable(old_kernel_pagetable,PGSIZE,old_kstack);
+  // char *pa = kalloc();
+  // if(pa == 0)
+  //   panic("kalloc");
+  // uint64 va = KSTACK((int) 0);
+  // kvmmap(p->kernel_pagetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  // p->kstack = va;
+  // user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, PGSIZE);
+
   // //检查第一个进程的页表情况
   // if(p->pid==1)
   //   vmprint(p->pagetable);
 
+
+  
+  // printf("exec()没有问题\n");
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:

@@ -34,14 +34,14 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      // char *pa = kalloc();
+      // if(pa == 0)
+      //   panic("kalloc");
+      // uint64 va = KSTACK((int) (p - proc));
+      // kvmmap(p->kernel_pagetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // p->kstack = va;
   }
-  kvminithart();
+  // kvminithart();
 }
 
 // Must be called with interrupts disabled,
@@ -120,6 +120,20 @@ found:
     release(&p->lock);
     return 0;
   }
+  
+  //准备一张内核页表
+  
+  // p->kernel_pagetable=kvminit();
+  p->kernel_pagetable=kvminit_modify();
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  // uint64 va = KSTACK((int) (p - proc));
+  uint64 va = KSTACK((int) 0);
+  kvmmap(p->kernel_pagetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+  // kvminithart();
+  // printf("成功给进程分配了一张内核页表\n");
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -141,6 +155,14 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+
+  //释放进程的内核页表
+  // printf("准备释放进程的内核页表\n");
+  if(p->kernel_pagetable)
+    proc_freekernelpagetable(p->kernel_pagetable, PGSIZE, p->kstack);
+
+  p->kernel_pagetable=0;
+
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -195,6 +217,15 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree(pagetable, sz);
 }
 
+//释放进程的内核页表
+//传入的va是kstack的地址
+void proc_freekernelpagetable(pagetable_t kernel_pagetable,uint64 sz, uint64 va){
+  // uvmunmap(kernel_pagetable, TRAMPOLINE, 1, 0);
+  // uvmunmap(kernel_pagetable, TRAPFRAME, 1, 0);
+  // printf("准备清除进程的内核页表\n");
+  uvmfree_kernel(kernel_pagetable, sz, va);
+}
+
 // a user program that calls exec("/init")
 // od -t xC initcode
 uchar initcode[] = {
@@ -219,7 +250,10 @@ userinit(void)
   // allocate one user page and copy init's instructions
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
-  p->sz = PGSIZE;
+  p->sz = PGSIZE;   //第一个进程的用户页表大小是PGSIZE
+
+  //把第一个进程的用户页表映射到内核页表中
+  // user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, p->sz);
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -243,13 +277,23 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if(sz+n > PLIC) //把用户页表的最高地址限制在PLIC以下
+      // n=PLIC-sz-1;
+      return -1;
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    
+    // if(user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, sz)<0){
+    //   return -1;
+    // }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    // uvmunmap(p->kernel_pagetable, PGROUNDUP(sz),(PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE, 0);
   }
   p->sz = sz;
+  //user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, sz);
+  // printf("sbrk()没有问题\n");
   return 0;
 }
 
@@ -273,7 +317,16 @@ fork(void)
     release(&np->lock);
     return -1;
   }
+
+
   np->sz = p->sz;
+  // //复制父进程的内核页表给子进程 
+  // //这里不能uvmcopy(p->kernel_pagetable,np->kernel_pagetable,0,np->sz)
+  // if(user2kernel_mappages(np->kernel_pagetable,np->pagetable,0,np->sz)<0){
+  //   freeproc(np);
+  //   release(&np->lock);
+  //   return -1;
+  // }
 
   np->parent = p;
 
@@ -296,6 +349,8 @@ fork(void)
   np->state = RUNNABLE;
 
   release(&np->lock);
+
+  // printf("fork()没有问题\n");
 
   return pid;
 }
@@ -473,6 +528,11 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        //将进程的内核页表加载到内核的寄存器中 satp
+        w_satp(MAKE_SATP(p->kernel_pagetable));
+        sfence_vma();
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -485,6 +545,9 @@ scheduler(void)
     }
 #if !defined (LAB_FS)
     if(found == 0) {
+      //scheduler() 当没有进程运行时应使用 kernel_pagetable 。
+      kvminithart();
+
       intr_on();
       asm volatile("wfi");
     }
