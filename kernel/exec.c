@@ -32,8 +32,11 @@ exec(char *path, char **argv)
   ilock(ip);
 
   //检查第一个进程的页表情况
-  if(p->pid==1)
-    vmprint(p->pagetable);
+  // if(p->pid==1){
+  //   // printf("page table %p\n",p->pagetable);
+  //   vmprint(p->pagetable);    
+  // }
+
 
   // Check ELF header
   if(readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
@@ -136,9 +139,9 @@ exec(char *path, char **argv)
   // p->kstack = va;
   // user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, PGSIZE);
 
-  // //检查第一个进程的页表情况
-  // if(p->pid==1)
-  //   vmprint(p->pagetable);
+  //检查第一个进程的页表情况
+  if(p->pid==1)
+    vmprint(p->pagetable);
 
 
   

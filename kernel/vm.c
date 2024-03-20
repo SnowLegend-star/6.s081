@@ -496,36 +496,76 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 }
 
 //打印页表情况 递归
-int flag=0; //记录递归深度
-void vmprint(pagetable_t pagetable){
-  int i, j;
-    flag++; // 增加递归深度
+// int flag=0; //记录递归深度
+// void vmprint(pagetable_t pagetable){
+//   int i, j;
+//     flag++; // 增加递归深度
 
-    for (i = 0; i < 512; i++) {
-        pte_t pte = pagetable[i];
+//     for (i = 0; i < 512; i++) {
+//         pte_t pte = pagetable[i];
 
-        if (pte == 0) {
-            continue; // 跳过空指针
-        }
+//         if (pte == 0) {
+//             continue; // 跳过空指针
+//         }
 
-        uint64 child = PTE2PA(pte);
+//         uint64 child = PTE2PA(pte);
 
-        // 打印格式输出
-        for (j = 0; j < flag; j++) {
-            printf("..");
-            if (j < flag - 1) { // 最后一层不输出空格
-                printf(" ");
-            }
-        }
+//         // 打印格式输出
+//         for (j = 0; j < flag; j++) {
+//             printf("..");
+//             if (j < flag - 1) { // 最后一层不输出空格
+//                 printf(" ");
+//             }
+//         }
 
-        printf("%d: pte %p pa %p\n", i, pte, child); // 打印PTE的内容
+//         printf("%d: pte %p pa %p\n", i, pte, child); // 打印PTE的内容
 
-        if ((pte & PTE_V) && ((pte & (PTE_R | PTE_W | PTE_X)) == 0)) {
-            vmprint((pagetable_t)child); // 递归打印下一级页表
-        }
-    }
+//         if ((pte & PTE_V) && ((pte & (PTE_R | PTE_W | PTE_X)) == 0)) {
+//             vmprint((pagetable_t)child); // 递归打印下一级页表
+//         }
+//     }
 
-    flag--; // 减少递归深度
+//     flag--; // 减少递归深度
+// }
+
+void in_vmprint(pagetable_t pgtbl,int level){
+  // there are 2^9 = 512 PTEs in a page table.(三级页表设计)
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pgtbl[i];
+    
+    // 对非最后一级页表的有效页进行后续操作(非最后一级页表的RWX标志位一般设置为0)
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){  
+
+      // 取得PTE中存储的物理地址(本质是下一级页表的物理号PPN,这个PPN拼上VA中的offset才能得到物理地址PA)
+      uint64 child = PTE2PA(pte);
+
+      // 打印能直观显示出pagetable层级的前缀("..")
+      for(int j = 0; j <= level; j++){
+        printf("..");
+        if(j + 1 <= level)
+          printf(" ");
+      }
+
+      // 二级页表
+      pagetable_t childPgtbl = (pagetable_t)child;
+      printf("%d: pte %p pa %p\n",i, pte, childPgtbl);
+
+      // 递归继续向下一级打印
+      in_vmprint(childPgtbl, level + 1);
+
+    // 最后一级页表的RWX标志位由操作系统指定，一般不会都为0
+    } else if(pte & PTE_V){                   
+      // 拿到最后一级页表（三级页表）的物理地址
+      uint64 finalPtbl = PTE2PA(pte);         
+      printf(".. .. ..%d: pte %p pa %p\n",i, pte, (pagetable_t)finalPtbl);
+    } 
+  }
+}
+
+void vmprint(pagetable_t pgtbl){
+  //打印进程的根页表(root pagetable)地址(satp register中存的)
+  printf("page table %p\n",pgtbl);  //%p -> pointer 地址
+  in_vmprint(pgtbl,0);
 }
 
 void freewalk_kernel(pagetable_t kernel_pagetable){
