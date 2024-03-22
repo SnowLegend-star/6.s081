@@ -31,9 +31,6 @@ kvminit_modify()
   // 为进程创建内核页表
   pagetable_t kernel_pagetable=(pagetable_t) kalloc();
   memset(kernel_pagetable, 0, PGSIZE);
-
-  // // 将内核页表的内容复制为全局内核页表的内容
-  // memmove(kernel_pagetable, kernel_pagetable, PGSIZE);
   
   // 将 uart 寄存器映射到内核页表
   kvmmap(kernel_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
@@ -42,7 +39,7 @@ kvminit_modify()
   kvmmap( kernel_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
   // 将 CLINT 映射到内核页表
-  kvmmap( kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  // kvmmap( kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
   // 将 PLIC 映射到内核页表
   kvmmap( kernel_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
@@ -58,37 +55,6 @@ kvminit_modify()
   return kernel_pagetable;
 }
 
-// pagetable_t
-// kvminit(){
-//     // 为进程创建内核页表
-//   kernel_pagetable=(pagetable_t) kalloc();
-//   memset(kernel_pagetable, 0, PGSIZE);
-
-//   // 将内核页表的内容复制为全局内核页表的内容
-//   memmove(kernel_pagetable, kernel_pagetable, PGSIZE);
-  
-//   // 将 uart 寄存器映射到内核页表
-//   kvmmap(kernel_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
-
-//   // 将 virtio mmio 磁盘接口映射到内核页表
-//   kvmmap( kernel_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
-
-//   // 将 CLINT 映射到内核页表
-//   kvmmap( kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
-
-//   // 将 PLIC 映射到内核页表
-//   kvmmap( kernel_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
-
-//   // 将内核文本映射到内核页表
-//   kvmmap( kernel_pagetable, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
-
-//   // 将内核数据和物理 RAM 映射到内核页表
-//   kvmmap( kernel_pagetable, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
-
-//   // 将 trampoline 映射到内核页表
-//   kvmmap( kernel_pagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
-//   return kernel_pagetable;
-// }
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
@@ -423,27 +389,28 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  uint64 n, va0, pa0;
+  // uint64 n, va0, pa0;
 
-  while(len > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > len)
-      n = len;
-    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  // while(len > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > len)
+  //     n = len;
+  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-    len -= n;
-    dst += n;
-    srcva = va0 + PGSIZE;
-  }
-  // if(copyin_new(pagetable,dst,srcva,len)<0){
-  //   printf("Something wrong when call copyin_new\n");
-  //   return -1;
+  //   len -= n;
+  //   dst += n;
+  //   srcva = va0 + PGSIZE;
   // }
 
+  if(copyin_new(pagetable,dst,srcva,len)<0){
+    // printf("Something wrong when call copyin_new\n");
+    return -1;
+  }
+  // printf("copyin 没问题\n");
   return 0;
 }
 
@@ -454,118 +421,87 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  uint64 n, va0, pa0;
-  int got_null = 0;
+  // uint64 n, va0, pa0;
+  // int got_null = 0;
 
-  while(got_null == 0 && max > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > max)
-      n = max;
+  // while(got_null == 0 && max > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > max)
+  //     n = max;
 
-    char *p = (char *) (pa0 + (srcva - va0));
-    while(n > 0){
-      if(*p == '\0'){
-        *dst = '\0';
-        got_null = 1;
-        break;
-      } else {
-        *dst = *p;
-      }
-      --n;
-      --max;
-      p++;
-      dst++;
-    }
+  //   char *p = (char *) (pa0 + (srcva - va0));
+  //   while(n > 0){
+  //     if(*p == '\0'){
+  //       *dst = '\0';
+  //       got_null = 1;
+  //       break;
+  //     } else {
+  //       *dst = *p;
+  //     }
+  //     --n;
+  //     --max;
+  //     p++;
+  //     dst++;
+  //   }
 
-    srcva = va0 + PGSIZE;
-  }
-  if(got_null){
-    return 0;
-  } else {
-    return -1;
-  }
-  // if(copyinstr_new(pagetable,dst,srcva,max)<0){
-  //   printf("Something wrong when call copyinstr_new\n");
+  //   srcva = va0 + PGSIZE;
+  // }
+  // if(got_null){
+  //   return 0;
+  // } else {
   //   return -1;
   // }
+
+
+  if(copyinstr_new(pagetable,dst,srcva,max)<0){
+    // printf("Something wrong when call copyinstr_new\n");
+    return -1;
+  }
+  // printf("copyin_str 没问题\n");
   return 0;
 }
 
 //打印页表情况 递归
-// int flag=0; //记录递归深度
-// void vmprint(pagetable_t pagetable){
-//   int i, j;
-//     flag++; // 增加递归深度
+int flag=0; //记录递归深度
+void in_vmprint(pagetable_t pagetable){
+  int i, j;
+    flag++; // 增加递归深度
 
-//     for (i = 0; i < 512; i++) {
-//         pte_t pte = pagetable[i];
+    for (i = 0; i < 512; i++) {
+        pte_t pte = pagetable[i];
 
-//         if (pte == 0) {
-//             continue; // 跳过空指针
-//         }
+        if (pte == 0) {
+            continue; // 跳过空指针
+        }
 
-//         uint64 child = PTE2PA(pte);
+        uint64 child = PTE2PA(pte);
 
-//         // 打印格式输出
-//         for (j = 0; j < flag; j++) {
-//             printf("..");
-//             if (j < flag - 1) { // 最后一层不输出空格
-//                 printf(" ");
-//             }
-//         }
+        // 打印格式输出
+        for (j = 0; j < flag; j++) {
+            printf("..");
+            if (j < flag - 1) { // 最后一层不输出空格
+                printf(" ");
+            }
+        }
 
-//         printf("%d: pte %p pa %p\n", i, pte, child); // 打印PTE的内容
+        printf("%d: pte %p pa %p\n", i, pte, child); // 打印PTE的内容
 
-//         if ((pte & PTE_V) && ((pte & (PTE_R | PTE_W | PTE_X)) == 0)) {
-//             vmprint((pagetable_t)child); // 递归打印下一级页表
-//         }
-//     }
+        if ((pte & PTE_V) && ((pte & (PTE_R | PTE_W | PTE_X)) == 0)) {
+            in_vmprint((pagetable_t)child); // 递归打印下一级页表
+        }
+    }
 
-//     flag--; // 减少递归深度
-// }
-
-void in_vmprint(pagetable_t pgtbl,int level){
-  // there are 2^9 = 512 PTEs in a page table.(三级页表设计)
-  for(int i = 0; i < 512; i++){
-    pte_t pte = pgtbl[i];
-    
-    // 对非最后一级页表的有效页进行后续操作(非最后一级页表的RWX标志位一般设置为0)
-    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){  
-
-      // 取得PTE中存储的物理地址(本质是下一级页表的物理号PPN,这个PPN拼上VA中的offset才能得到物理地址PA)
-      uint64 child = PTE2PA(pte);
-
-      // 打印能直观显示出pagetable层级的前缀("..")
-      for(int j = 0; j <= level; j++){
-        printf("..");
-        if(j + 1 <= level)
-          printf(" ");
-      }
-
-      // 二级页表
-      pagetable_t childPgtbl = (pagetable_t)child;
-      printf("%d: pte %p pa %p\n",i, pte, childPgtbl);
-
-      // 递归继续向下一级打印
-      in_vmprint(childPgtbl, level + 1);
-
-    // 最后一级页表的RWX标志位由操作系统指定，一般不会都为0
-    } else if(pte & PTE_V){                   
-      // 拿到最后一级页表（三级页表）的物理地址
-      uint64 finalPtbl = PTE2PA(pte);         
-      printf(".. .. ..%d: pte %p pa %p\n",i, pte, (pagetable_t)finalPtbl);
-    } 
-  }
+    flag--; // 减少递归深度
 }
 
-void vmprint(pagetable_t pgtbl){
+void vmprint(pagetable_t pagetable){
   //打印进程的根页表(root pagetable)地址(satp register中存的)
-  printf("page table %p\n",pgtbl);  //%p -> pointer 地址
-  in_vmprint(pgtbl,0);
+  printf("page table %p\n",pagetable);  //打印pagetable的地址
+  in_vmprint(pagetable);
 }
 
 void freewalk_kernel(pagetable_t kernel_pagetable){
@@ -578,6 +514,8 @@ void freewalk_kernel(pagetable_t kernel_pagetable){
       kernel_pagetable[i]=0;
     }
     else if(pte&PTE_V){
+      //要不要加上一句
+      kernel_pagetable[i]=0;
       // printf("Something wrong when freewalk_kernel\n");
       // kfree((void*)(pagetable_t)(PTE2PA(pte)));
     }
@@ -605,7 +543,6 @@ int user2kernel_mappages(pagetable_t kernel_pagetable, pagetable_t pagetable, ui
       return -1;      
     }
 
-    
     //如果普通页表的这个pte不为空
     if(*pte_userpg & PTE_V){
       pa=PTE2PA(*pte_userpg);   //先得到这个pte的物理地址pa，再把物理地址pa和内核页表的pte进行映射

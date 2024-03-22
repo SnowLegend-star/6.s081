@@ -11,7 +11,7 @@ struct cpu cpus[NCPU];
 struct proc proc[NPROC];
 
 struct proc *initproc;
-
+ 
 int nextpid = 1;
 struct spinlock pid_lock;
 
@@ -122,9 +122,12 @@ found:
   }
   
   //准备一张内核页表
-  
-  // p->kernel_pagetable=kvminit();
   p->kernel_pagetable=kvminit_modify();
+  if (p->kernel_pagetable == 0) {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
   char *pa = kalloc();
   if(pa == 0)
     panic("kalloc");
@@ -132,7 +135,6 @@ found:
   uint64 va = KSTACK((int) 0);
   kvmmap(p->kernel_pagetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   p->kstack = va;
-  // kvminithart();
   // printf("成功给进程分配了一张内核页表\n");
 
   // Set up new context to start executing at forkret,
@@ -253,7 +255,9 @@ userinit(void)
   p->sz = PGSIZE;   //第一个进程的用户页表大小是PGSIZE
 
   //把第一个进程的用户页表映射到内核页表中
-  // user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, p->sz);
+  printf("给第一个进程添加内核映射\n");
+  user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, PGSIZE);
+  printf("userinit() 未出错\n");
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -284,12 +288,12 @@ growproc(int n)
       return -1;
     }
     
-    // if(user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, sz)<0){
-    //   return -1;
-    // }
+    if(user2kernel_mappages(p->kernel_pagetable, p->pagetable, p->sz, sz)<0){
+      return -1;
+    }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
-    // uvmunmap(p->kernel_pagetable, PGROUNDUP(sz),(PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE, 0);
+    uvmunmap(p->kernel_pagetable, PGROUNDUP(sz),(PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE, 0);
   }
   p->sz = sz;
   //user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, sz);
@@ -320,13 +324,13 @@ fork(void)
 
 
   np->sz = p->sz;
-  // //复制父进程的内核页表给子进程 
-  // //这里不能uvmcopy(p->kernel_pagetable,np->kernel_pagetable,0,np->sz)
-  // if(user2kernel_mappages(np->kernel_pagetable,np->pagetable,0,np->sz)<0){
-  //   freeproc(np);
-  //   release(&np->lock);
-  //   return -1;
-  // }
+  //复制父进程的内核页表给子进程 
+  //这里不能uvmcopy(p->kernel_pagetable,np->kernel_pagetable,0,np->sz)
+  if(user2kernel_mappages(np->kernel_pagetable,np->pagetable,0,np->sz)<0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
 
   np->parent = p;
 

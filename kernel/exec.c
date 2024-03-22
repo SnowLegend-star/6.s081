@@ -137,7 +137,8 @@ exec(char *path, char **argv)
   // uint64 va = KSTACK((int) 0);
   // kvmmap(p->kernel_pagetable,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   // p->kstack = va;
-  // user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, PGSIZE);
+  uvmunmap(p->kernel_pagetable, 0, PGROUNDDOWN(oldsz)/PGSIZE, 0);
+  user2kernel_mappages(p->kernel_pagetable, p->pagetable, 0, p->sz);
 
   //检查第一个进程的页表情况
   if(p->pid==1)
