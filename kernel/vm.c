@@ -548,7 +548,7 @@ int user2kernel_mappages(pagetable_t kernel_pagetable, pagetable_t pagetable, ui
       pa=PTE2PA(*pte_userpg);   //先得到这个pte的物理地址pa，再把物理地址pa和内核页表的pte进行映射
       perm=(*pte_userpg) & 0x3FF;  //不是pxmask而是0x3FF
       perm=perm & (~PTE_U);  //把PTE_U置为0
-      if(mappages(kernel_pagetable, i, va_end, pa, perm)<0){
+      if(mappages(kernel_pagetable, i, PGSIZE, pa, perm)<0){
         printf("Something wrong when call user2lkernel_mappages\n");
         return -1;
       }
