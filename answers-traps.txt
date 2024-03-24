@@ -1,0 +1,44 @@
+Q1：Which registers contain arguments to functions? For example, which register holds 13 in main's                  call to printf?
+
+A：   用户代码将exec的参数放在寄存器a0和a1中，并将系统调用放在a7中。当系统调用返回时，其返回值记录              在p->trapframe->a0中。
+         a7存放编号为13的系统调用。
+
+Q2：Where is the call to function f in the assembly code for main? Where is the call to g? (Hint: the                    compiler may inline functions.)
+
+A：    汇编代码main函数中没有找到调用f的地方，应该是被内联取代函数调用了，直接设置为12。
+
+
+Q3：At what address is the function printf located?
+
+A：   printf位于“0x630”处。
+
+Q4：What value is in the register ra just after the jalr to printf in main?
+
+A：   ra 通常指的是 RISC-V 架构中的返回地址寄存器，用于存储函数调用后的返回地址。所以这里ra的值应为
+         “0x38”。
+
+
+Q5：Run the following code.
+
+	unsigned int i = 0x00646c72;
+	printf("H%x Wo%s", 57616, &i);
+      
+Q5.1：What is the output? Here's an ASCII table that maps bytes to characters.
+
+A：      输出是“Hello World”。
+
+Q5.2：The output depends on that fact that the RISC-V is little-endian. If the RISC-V were instead big-	           endian what would you set i to in order to yield the same output? Would you need to change                      57616 to a different value?
+
+A：    因为xv6是小端存储，所以i在内存中实际的存放值应该是“0x726c6400”。同时，系统从地址低位往地址             高为打印字符，这恰好对应“rld”。如果机器
+          是大端存储(更符合日常书写习惯)，则需要把i改为“0x726c6400”。
+          而我们不需要修改 57616 的值，因为它是以十六进制形式打印的，并且十六进制的表示方式不受字节序影              响。无论系统的字节序如何，57616 在十六进制中表示的值始终是 0xe110。
+
+Here's a description of little- and big-endian and a more whimsical description.
+
+Q6：In the following code, what is going to be printed after 'y='? (note: the answer is not a specific          value.) Why does this happen?
+
+	printf("x=%d y=%d", 3);
+
+A： x=3 y=-80204024。
+       y的值从内存残留的值里面进行读取。
+       
