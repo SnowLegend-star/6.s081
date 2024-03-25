@@ -122,6 +122,7 @@ panic(char *s)
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
+  backtrace();
   for(;;)
     ;
 }
@@ -131,4 +132,16 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+//通过栈指针来追踪函数调用的层次结构
+//打印每个函数调用的返回地址
+void backtrace(){
+  uint64 fp=r_fp();
+  uint64 return_address;
+  while(fp!=0 && fp> PGROUNDDOWN(fp) && fp<PGROUNDUP(fp)){
+    return_address=*(uint64*)(fp-8);    
+    printf("%p\n",return_address);
+    fp=*(uint64*)(fp-16);     //返回到上一个调用栈的栈帧中
+  }
 }
