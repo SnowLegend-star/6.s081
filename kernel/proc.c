@@ -121,6 +121,11 @@ found:
     return 0;
   }
 
+  //准备记录自从上次调用alarm handler已经过去了多少个ticks
+  p->ticks_passed=0;
+  p->handler_function=0;
+  p->time_interval=0;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -150,6 +155,9 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->handler_function=0;
+  p->time_interval=0;
+  p->ticks_passed=0;
 }
 
 // Create a user page table for a given process,

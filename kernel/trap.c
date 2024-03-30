@@ -37,7 +37,7 @@ void
 usertrap(void)
 {
   int which_dev = 0;
-
+ 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
@@ -67,6 +67,7 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -77,8 +78,23 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  // if(which_dev == 2)
+  //   yield();
+
+  //记录ticks_passed
+  if(which_dev==2){
+    //如果是timer interrupt才处理进程的alarmtest
+    // printf("The ticks_passed is: %d\n",p->ticks_passed);
+    p->ticks_passed++;
+    // if(p->time_interval==p->ticks_passed)
+    //   printf("The handler_function address from user space is: %p\n",p->handler_function);
+    if(p->time_interval==p->ticks_passed ){
+      // sys_sigalarm();      //西巴！问题原来出在这里
+      p->trapframe->epc=(uint64)(p->handler_function);
+      p->ticks_passed=0;
+    }
     yield();
+  }
 
   usertrapret();
 }

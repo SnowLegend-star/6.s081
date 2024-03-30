@@ -96,3 +96,26 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigalarm(void){
+  struct proc *p=myproc();
+  uint64 handler_function;
+  if(argint(0,&(p->time_interval))<0)
+    return -1;
+  if(argaddr(1,&handler_function)<0)
+    return -1;
+  if((p->time_interval)==0 && handler_function==0)
+    return -1;
+  p->handler_function=(void*)handler_function; 
+  p->ticks_passed=0;
+  // p->ticks_passed=sys_uptime();
+  printf("The time interval from user space is: %d\n",p->time_interval);
+  printf("The handler_function address from user space is: %p\n",p->handler_function);
+  return 0;
+}
+
+uint64
+sys_sigreturn(void){
+  return 0;
+}
