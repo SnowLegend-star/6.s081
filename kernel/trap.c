@@ -59,7 +59,6 @@ usertrap(void)
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
     p->trapframe->epc += 4;
-
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
     intr_on();
@@ -88,10 +87,23 @@ usertrap(void)
     p->ticks_passed++;
     // if(p->time_interval==p->ticks_passed)
     //   printf("The handler_function address from user space is: %p\n",p->handler_function);
-    if(p->time_interval==p->ticks_passed ){
+    if(p->time_interval==p->ticks_passed && p->flag==0){
       // sys_sigalarm();      //西巴！问题原来出在这里
-      p->trapframe->epc=(uint64)(p->handler_function);
+
+      p->re_epc=p->trapframe->epc;      //存储原本应该返回到的地址(ecall的后一句指令)
+      p->s0=p->trapframe->s0;
+      p->s1=p->trapframe->s1;
+      p->ra=p->trapframe->ra;
+      p->sp=p->trapframe->sp;
       p->ticks_passed=0;
+      p->a1=p->trapframe->a1;
+      p->a0=p->trapframe->a0;
+      p->a5=p->trapframe->a5;
+
+
+      p->trapframe->epc=(uint64)(p->handler_function);
+
+      p->flag=1;
     }
     yield();
   }

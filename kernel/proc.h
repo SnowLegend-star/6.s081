@@ -104,7 +104,16 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  int time_interval;           //alarm interval
+  int time_interval;                    //alarm interval
   void (*handler_function)();           //指向处理函数的指针
-  int ticks_passed;                    //上次调用警报处理程序（alarm handler）以来经过了多少个 tick
+  int ticks_passed;                     //上次调用警报处理程序（alarm handler）以来经过了多少个 tick
+
+  struct trapframe *new_trapframe;      //建立一个新的栈帧来维护寄存器的值
+  uint64 re_epc;                        //原本应该返回到epc+4
+  uint64 s0;
+  uint64 s1;
+  uint64 sp;
+  uint64 ra;
+  uint64 a1,a0,a5;                   //test1和foo汇编代码中涉及计算i，j的部分
+  int flag;                          //flag=0的时候说明可以调用handler_function   完成可重入性检查
 };

@@ -90,6 +90,7 @@ test1()
       break;
     foo(i, &j);
   }
+  printf("在test1中, count的值是%d\n",count);
   if(count < 10){
     printf("\ntest1 failed: too few calls to the handler\n");
   } else if(i != j){
@@ -100,6 +101,7 @@ test1()
     // occurred; another is that that registers may not be
     // restored correctly, causing i or j or the address ofj
     // to get an incorrect value.
+    printf("在test1中, i的值是%d, j的值是%d\n",i,j);
     printf("\ntest1 failed: foo() executed fewer times than it was called\n");
   } else {
     printf("test1 passed\n");

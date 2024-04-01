@@ -117,5 +117,16 @@ sys_sigalarm(void){
 
 uint64
 sys_sigreturn(void){
+  struct proc *p=myproc();
+  p->trapframe->epc=p->re_epc;      //存储原本应该返回到的地址(ecall的后一句指令)
+  p->trapframe->s0=p->s0;
+  p->trapframe->s1=p->s1;
+  p->trapframe->ra=p->ra;
+  p->trapframe->sp=p->sp;  
+  p->trapframe->a1=p->a1;
+  p->trapframe->a0=p->a0;
+  p->trapframe->a5=p->a5;
+
+  p->flag=0;
   return 0;
 }
