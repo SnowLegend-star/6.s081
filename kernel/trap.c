@@ -70,30 +70,25 @@ usertrap(void)
   } 
   else if(r_scause()==15){//如果是出现缺页错误
 
-    char *mem;
-    uint64 low_addr;
-    // if(low_addr>p->sz){
-      //如果新size大于原size
-      //好像也无法获得原size的大小
-      for(low_addr=PGROUNDDOWN(r_stval()); low_addr < p->sz; low_addr += PGSIZE){
-        mem=kalloc();
-        if(mem==0){
-          uvmdealloc(p->pagetable, low_addr, p->sz - low_addr);
-          return ;
-        }
-        memset(mem, 0, PGSIZE);
-        if(mappages(p->pagetable, low_addr, PGSIZE, (uint64) mem, PTE_W|PTE_X|PTE_R|PTE_U)!=0){
-          kfree(mem);
-          uvmdealloc(p->pagetable, low_addr, p->sz - low_addr);
-          return ;
-        }
+    uint64 mem;
+    uint64 low_addr=PGROUNDDOWN(r_stval());
+    printf("page fault %p\n", r_stval());
+    if(low_addr > p->sz)
+      p->killed=1 ;
+    mem=(uint64)kalloc();
+    if(mem==0){
+      // uvmdealloc(p->pagetable, low_addr, p->sz - low_addr);
+      //用killed参数来杀死进程，而不是直接return 
+      p->killed=1;
+    }
+    else{
+      memset((void *)mem, 0, PGSIZE);
+      if(mappages(p->pagetable, low_addr, PGSIZE, mem, PTE_W|PTE_R|PTE_U)!=0){
+        kfree((void*)mem);
+        // uvmdealloc(p->pagetable, low_addr, p->sz - low_addr);
+        p->killed=1;      
       }
-    // }
-    // else{
-    //   //新size小于原size
-    //   //貌似无法准确获取到之前的p->sz大小了
-    //   uvmdealloc(p->pagetable, PGROUNDUP(p->sz), p->sz);
-    // }
+    }
 
   }
   else {
