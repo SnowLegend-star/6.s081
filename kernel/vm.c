@@ -117,7 +117,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
       return 0;
     }
     else{
-      va = PGROUNDUP(va);
+      va = PGROUNDUP(va);       //加不加都行
       memset((void *)mem, 0, PGSIZE);
       if(mappages(p->pagetable, va, PGSIZE, mem, PTE_W|PTE_R|PTE_U)!=0){
         kfree((void*)mem);
