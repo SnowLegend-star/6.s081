@@ -68,25 +68,33 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } 
-  else if(r_scause()==15){//如果是出现缺页错误
+  else if(r_scause()==15 || r_scause()==13){  //如果是出现缺页错误
 
     uint64 mem;
-    uint64 low_addr=PGROUNDDOWN(r_stval());
-    printf("page fault %p\n", r_stval());
-    if(low_addr > p->sz)
-      p->killed=1 ;
+    // uint64 low_addr=PGROUNDDOWN(r_stval());//这里提早向下舍入low_addr是不是有问题啊？
+    uint64 low_addr=r_stval();
+    // printf("page fault %p\n", r_stval());
+    if(low_addr >= p->sz)    //这里如果用low_addr > maxva就无法通过unmap测试
+      // p->killed=1 ;
+      exit(-1);
+    if(low_addr < p->trapframe->sp )  //即出错的地址位于guard page
+      // p->killed=1;
+      exit(-1);
     mem=(uint64)kalloc();
     if(mem==0){
       // uvmdealloc(p->pagetable, low_addr, p->sz - low_addr);
-      //用killed参数来杀死进程，而不是直接return 
-      p->killed=1;
+      //用killed参数来杀死进程，而不是直接return  用kill的方式会导致  test copyinstr3: unlink(x) returned 0, not -1
+      // p->killed=1;
+      exit(-1);         //用exit(-1)也可以，一步到位
     }
     else{
       memset((void *)mem, 0, PGSIZE);
+      low_addr=PGROUNDDOWN(low_addr);
       if(mappages(p->pagetable, low_addr, PGSIZE, mem, PTE_W|PTE_R|PTE_U)!=0){
         kfree((void*)mem);
         // uvmdealloc(p->pagetable, low_addr, p->sz - low_addr);
-        p->killed=1;      
+        // p->killed=1;   
+        exit(-1);   
       }
     }
 

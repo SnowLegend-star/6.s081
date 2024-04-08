@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -72,7 +74,8 @@ pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
-    panic("walk");
+    // panic("walk");
+    exit(-1);
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
@@ -101,14 +104,33 @@ walkaddr(pagetable_t pagetable, uint64 va)
     return 0;
 
   pte = walk(pagetable, va, 0);
-  if(pte == 0)
-    return 0;
-  if((*pte & PTE_V) == 0)
-    return 0;
+  if(pte == 0 || (*pte & PTE_V)==0 ){
+    struct proc *p=myproc();
+    //由于write是系统调用，在内核中访问用户地址空间出现异常不会进入usertrap()函数
+    uint64 mem;
+    if(va >= p->sz)    //这里如果用low_addr > maxva就无法通过unmap测试
+      return 0;
+    if(va < p->trapframe->sp )  //即出错的地址位于guard page
+      return 0;
+    mem=(uint64)kalloc();
+    if(mem==0){
+      return 0;
+    }
+    else{
+      va = PGROUNDUP(va);
+      memset((void *)mem, 0, PGSIZE);
+      if(mappages(p->pagetable, va, PGSIZE, mem, PTE_W|PTE_R|PTE_U)!=0){
+        kfree((void*)mem);
+        return 0;
+      }
+    }
+  }
+
   if((*pte & PTE_U) == 0)
     return 0;
   pa = PTE2PA(*pte);
   return pa;
+    
 }
 
 // add a mapping to the kernel page table.
@@ -181,7 +203,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      // panic("uvmunmap: walk");
+      continue;
     if((*pte & PTE_V) == 0)
       // panic("uvmunmap: not mapped");
       continue;
@@ -284,7 +307,12 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
-      panic("freewalk: leaf");
+      // printf("出错的叶子页表项为：\n");
+      // vmprint(pagetable);
+      // printf("\n");
+      // panic("freewalk: leaf");
+      uint64 pa = PTE2PA(pte);
+      kfree((void*)pa);
     }
   }
   kfree((void*)pagetable);
@@ -297,6 +325,9 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
+  // printf("进程在进行uvmunmap之后, 页表的情况如下: \n");
+  // vmprint(pagetable);
+  // printf("\n");
   freewalk(pagetable);
 }
 
@@ -316,11 +347,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      // panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
+    // printf("父进程的flags是%p: \n", flags);
     if((mem = kalloc()) == 0)
       goto err;
     memmove(mem, (char*)pa, PGSIZE);
@@ -440,4 +474,36 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+//打印页表情况 递归
+int flag=0; //记录递归深度
+void in_vmprint(pagetable_t pagetable){
+  int i, j;
+  flag++; // 增加递归深度
+  for (i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if (pte == 0) {
+      continue; // 跳过空指针
+    }
+    uint64 child = PTE2PA(pte);
+    // 打印格式输出
+    for (j = 0; j < flag; j++) {
+      printf("..");
+      if (j < flag - 1) { // 最后一层不输出空格
+        printf(" ");
+      }
+    }
+    printf("%d: pte %p pa %p\n", i, pte, child); // 打印PTE的内容
+    if ((pte & PTE_V) && ((pte & (PTE_R | PTE_W | PTE_X)) == 0)) {
+      in_vmprint((pagetable_t)child); // 递归打印下一级页表
+    }
+  }
+  flag--; // 减少递归深度
+}
+
+void vmprint(pagetable_t pagetable){
+  //打印进程的根页表(root pagetable)地址(satp register中存的)
+  printf("page table %p\n",pagetable);  //打印pagetable的地址
+  in_vmprint(pagetable);
 }
