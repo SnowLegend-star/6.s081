@@ -62,6 +62,7 @@ kfree(void *pa)
 
   acquire(&ref_cnt.lock);
   ref_cnt.pgtbl_index[(uint64)pa/PGSIZE]--;
+  // release(&ref_cnt.lock); //什么时候释放都可以(X)   关于锁的释放问题一定要谨慎
   if(ref_cnt.pgtbl_index[(uint64)pa/PGSIZE]==0){
   release(&ref_cnt.lock); //什么时候释放都可以
   // Fill with junk to catch dangling refs.
@@ -75,7 +76,7 @@ kfree(void *pa)
   release(&kmem.lock);
   }
   else
-    release(&ref_cnt.lock); //什么时候释放都可以
+    release(&ref_cnt.lock);
 
 
 }
