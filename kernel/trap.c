@@ -10,6 +10,7 @@ struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
+// extern int pgtbl_index[32*1024];    //物理内存最多可以分成128MB/4KB=32K
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
@@ -67,7 +68,61 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } 
+  else if(r_scause()==15 || r_scause()==13 ){
+    pte_t*  pte;
+    char*   mem;
+    int     perm;                     //pte低十位的标志
+    uint64  pa;                       //发生trap的物理地址
+    uint64 addr=r_stval();            //获取出错的地址
+    // printf("发生trap的va是: %p\n", addr);
+    // //判断出错地址的合法性
+    
+    if(addr > p->sz || addr > MAXVA)    
+      exit(-1);
+    // if(addr < p->trapframe->sp )                   //即出错的地址位于guard page   傻逼判断害苦了我啊！
+    //   exit(-1);
+    
+    // printf("当前运行进程为%s, pid为%d\n", p->name, p->pid);
+    pte=walk(p->pagetable, addr, 0);                  //获取出错地址对应的pte
+    if(pte==0)
+      exit(-1);
+
+    // printf("发生trap的PTE为: %p\n",*pte);
+    if( (*pte & PTE_RSW) && (*pte & PTE_V) ){         //只处理COW页表   if((*pte) & PTE_RSW & PTE_V) 我是傻逼
+    // if(cowpage(p->pagetable,addr)==0){
+      addr=PGROUNDDOWN(r_stval());
+      pte=walk(p->pagetable, addr, 0);
+      // pa=PTE2PA(*pte);
+      pa = walkaddr(p->pagetable, addr);
+      if(pa==0)                                       //为了确保映射到guard page时不出错
+        exit(-1);
+      // printf("发生trap的pa是: %p\n", pa);
+      // printf("当前运行进程为%s, pid为%d\n", p->name, p->pid);
+ 
+      if(physiaclPage_refcnt((void*)pa) ==1){         //如果对发生trap的页面引用是1
+        *pte=(*pte | PTE_W) & ~PTE_RSW;
+      }
+      else{
+        mem=kalloc();
+        if(mem==0)
+          exit(-1);
+        *pte &= ~PTE_V;                                //不加这句会有remap
+          //开始给这个出错的pte分配的实际的物理地址
+        memmove(mem, (char*)pa, PGSIZE);
+        // uvmunmap(p->pagetable, addr, 1, 0);
+        perm=(PTE_FLAGS(*pte) | PTE_W) & ~PTE_RSW;
+        if(mappages(p->pagetable, addr, PGSIZE, (uint64)mem, perm) <0){
+          kfree((void*)mem);
+          *pte=*pte&~PTE_V;
+        }
+        kfree((void*)PGROUNDDOWN(pa));                 //发生trap的pa引用应该减一
+      }
+    }
+    else                                               //一定要及时kill有问题的进程  不然会卡在sbrkfail
+      exit(-1);
+  }
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;

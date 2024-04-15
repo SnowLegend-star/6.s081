@@ -10,6 +10,8 @@ struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
 
+// int pgtbl_index[32*1024];   //物理内存最多可以分成128MB/4KB=32K
+
 struct proc *initproc;
 
 int nextpid = 1;
@@ -37,6 +39,11 @@ procinit(void)
       char *pa = kalloc();
       if(pa == 0)
         panic("kalloc");
+
+      //设置物理页面的引用情况
+      // if(pgtbl_index[(uint64)pa/4096]==0)
+      //   pgtbl_index[(uint64)pa/4096]=1;
+
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
@@ -113,6 +120,10 @@ found:
     return 0;
   }
 
+  // //设置物理页面的引用情况
+  // if(pgtbl_index[(uint64)(p->trapframe)/4096]==0)
+  //   pgtbl_index[(uint64)(p->trapframe)/4096]=1;
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -136,8 +147,15 @@ found:
 static void
 freeproc(struct proc *p)
 {
+  // if(p->trapframe ){
+  //     pgtbl_index[(uint64)(p->trapframe)/4096]--;
+  //   if(pgtbl_index[(uint64)(p->trapframe)/4096]==0){
+  //     kfree((void*)p->trapframe);
+  //   }
+  // }
   if(p->trapframe)
     kfree((void*)p->trapframe);
+
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);

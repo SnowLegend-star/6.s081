@@ -23,9 +23,15 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  int pgtbl_index[PHYSTOP/PGSIZE];   //物理内存最多可以分成128MB/4KB=32K
+  struct spinlock lock;        //物理页表引用锁
+}ref_cnt;
+
 void
 kinit()
 {
+  initlock(&ref_cnt.lock, "kref_cnt");
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
 }
@@ -35,8 +41,11 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
+    ref_cnt.pgtbl_index[(uint64)p/PGSIZE]=1;
     kfree(p);
+  }
+
 }
 
 // Free the page of physical memory pointed at by v,
@@ -51,6 +60,10 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  acquire(&ref_cnt.lock);
+  ref_cnt.pgtbl_index[(uint64)pa/PGSIZE]--;
+  if(ref_cnt.pgtbl_index[(uint64)pa/PGSIZE]==0){
+  release(&ref_cnt.lock); //什么时候释放都可以
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -60,6 +73,11 @@ kfree(void *pa)
   r->next = kmem.freelist;
   kmem.freelist = r;
   release(&kmem.lock);
+  }
+  else
+    release(&ref_cnt.lock); //什么时候释放都可以
+
+
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -72,11 +90,28 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
     kmem.freelist = r->next;
+    //设置pgtbl_index
+    acquire(&ref_cnt.lock);
+    ref_cnt.pgtbl_index[(uint64)r/PGSIZE]=1;
+    release(&ref_cnt.lock);
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+int physiaclPage_refcnt(void* pa){
+  return ref_cnt.pgtbl_index[(uint64)pa/PGSIZE];
+}
+
+void modify_pgtbl(void* pa){
+  if( (uint64)pa%PGSIZE!=0 || (char*)pa < end || (uint64)pa > PHYSTOP) 
+    return ;
+  acquire(&ref_cnt.lock);
+  ref_cnt.pgtbl_index[(uint64)pa/PGSIZE]++;
+  release(&ref_cnt.lock);
 }

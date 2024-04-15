@@ -3,6 +3,7 @@
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
 #include "defs.h"
 #include "fs.h"
 
@@ -15,6 +16,8 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+// extern int pgtbl_index[32*1024];    //物理内存最多可以分成128MB/4KB=32K
+
 /*
  * create a direct-map page table for the kernel.
  */
@@ -22,6 +25,11 @@ void
 kvminit()
 {
   kernel_pagetable = (pagetable_t) kalloc();
+
+  // //设置物理页面的引用情况
+  // if(pgtbl_index[(uint64)kernel_pagetable/4096]==0)
+  //   pgtbl_index[(uint64)kernel_pagetable/4096]=1;
+
   memset(kernel_pagetable, 0, PGSIZE);
 
   // uart registers
@@ -81,6 +89,11 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     } else {
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
+      
+      // //设置物理页面的引用情况
+      // if(pgtbl_index[(uint64)kernel_pagetable/4096]==0)
+      //   pgtbl_index[(uint64)kernel_pagetable/4096]=1;
+
       memset(pagetable, 0, PGSIZE);
       *pte = PA2PTE(pagetable) | PTE_V;
     }
@@ -189,6 +202,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
+    //   pgtbl_index[(uint64)pa/4096]--;
+    //   if(pgtbl_index[(uint64)pa/4096]==0)
+    //     kfree((void*)pa);
     }
     *pte = 0;
   }
@@ -201,6 +217,11 @@ uvmcreate()
 {
   pagetable_t pagetable;
   pagetable = (pagetable_t) kalloc();
+
+  // //设置物理页面的引用情况
+  // if(pgtbl_index[(uint64)kernel_pagetable/4096]==0)
+  //   pgtbl_index[(uint64)kernel_pagetable/4096]=1;
+
   if(pagetable == 0)
     return 0;
   memset(pagetable, 0, PGSIZE);
@@ -218,6 +239,11 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
   if(sz >= PGSIZE)
     panic("inituvm: more than a page");
   mem = kalloc();
+
+  // //设置物理页面的引用情况
+  // if(pgtbl_index[(uint64)mem/4096]==0)
+  //   pgtbl_index[(uint64)mem/4096]=1;
+
   memset(mem, 0, PGSIZE);
   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
   memmove(mem, src, sz);
@@ -237,12 +263,19 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
     mem = kalloc();
+
+    // //设置物理页面的引用情况
+    // if(pgtbl_index[(uint64)mem/4096]==0)
+    //   pgtbl_index[(uint64)mem/4096]=1;
+
     if(mem == 0){
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      // pgtbl_index[(uint64)mem/4096]--;
+      // if(pgtbl_index[(uint64)mem/4096]==0)
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
@@ -286,6 +319,8 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
+  // pgtbl_index[(uint64)pagetable/4096]--;
+  // if(pgtbl_index[(uint64)pagetable/4096]==0)
   kfree((void*)pagetable);
 }
 
@@ -311,7 +346,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,20 +353,33 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+    flags=PTE_FLAGS(*pte);
+    //当父进程的PTE本身是可写的才设置父进程的level0层页表是不可写的
+    //COW是建立在页面可写的基础上的
+    if(flags & PTE_W){
+      *pte=( (*pte) & ~PTE_W ) | PTE_RSW;
+      flags = (flags & ~PTE_W) | PTE_RSW;     //添加标志位一定得用 | 而不是 &
     }
-  }
-  return 0;
+    // printf("***************\n");
+    // printf("父进程的页表如下: \n");
+    // vmprint(old);
 
- err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
+    if(mappages(new, i, PGSIZE, pa, flags) < 0){
+      return -1;
+    }
+
+    modify_pgtbl((void*) pa);
+
+    // printf("子进程的页表如下: \n");
+    // vmprint(new);
+    // printf("\n");
+  }
+  //设置父子进程的level2层页表都是不可写的
+  // for(i=0; i<512; i++){
+  //   old[i]=(old[i] & ~PTE_W) | PTE_RSW;
+  //   new[i]=old[i];
+  // }
+  return 0;
 }
 
 // mark a PTE invalid for user access.
@@ -355,12 +402,42 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
+  pte_t *pte;
+  char  *mem;
+  int   perm;
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+
+    pte=walk(pagetable, va0, 0);
+    // 如果dstva是一个COW页表，则需要申请新的页表来进行写入
+    if(pte!=0 &&(*pte & PTE_V)!=0 && va0<MAXVA){
+      if( (*pte & PTE_RSW) && (*pte & PTE_V) ){
+        if(physiaclPage_refcnt((void*)pa0) ==1){
+          *pte=(*pte | PTE_W) & ~PTE_RSW;
+        }
+        else{
+          perm=(PTE_FLAGS(*pte)|PTE_W) & (~PTE_RSW);    //这个perm也是坏我大事
+          mem=kalloc();
+          if(mem!=0){
+          // uvmunmap(pagetable, va0, 1, 0);
+          *pte &= ~PTE_V;
+          memmove(mem, (char*)pa0 ,PGSIZE);
+          if(mappages(pagetable, va0, PGSIZE, (uint64)mem, perm) <0){
+            // pgtbl_index[(uint64)mem/4096]--;
+            // if(pgtbl_index[(uint64)mem/4096]==0)
+            kfree(mem);
+            *pte=*pte&~PTE_V;
+            return -1;
+          }
+          kfree((void*) PGROUNDDOWN(pa0));
+          pa0=(uint64)mem;
+          }
+        }
+      }
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -439,4 +516,44 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+
+//打印页表情况 递归
+int flag=0; //记录递归深度
+void in_vmprint(pagetable_t pagetable){
+  int i, j;
+    flag++; // 增加递归深度
+
+    for (i = 0; i < 512; i++) {
+        pte_t pte = pagetable[i];
+
+        if (pte == 0) {
+            continue; // 跳过空指针
+        }
+
+        uint64 child = PTE2PA(pte);
+
+        // 打印格式输出
+        for (j = 0; j < flag; j++) {
+            printf("..");
+            if (j < flag - 1) { // 最后一层不输出空格
+                printf(" ");
+            }
+        }
+
+        printf("%d: pte %p pa %p\n", i, pte, child); // 打印PTE的内容
+
+        if ((pte & PTE_V) && ((pte & (PTE_R | PTE_W | PTE_X)) == 0)) {
+            in_vmprint((pagetable_t)child); // 递归打印下一级页表
+        }
+    }
+
+    flag--; // 减少递归深度
+}
+
+void vmprint(pagetable_t pagetable){
+  //打印进程的根页表(root pagetable)地址(satp register中存的)
+  printf("page table %p\n",pagetable);  //打印pagetable的地址
+  in_vmprint(pagetable);
 }
