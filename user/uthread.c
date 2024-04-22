@@ -10,18 +10,39 @@
 #define STACK_SIZE  8192
 #define MAX_THREAD  4
 
+// 创建thraed的上下文
+struct context {
+  uint64 ra;
+  uint64 sp;
+
+  // callee-saved
+  uint64 s0;
+  uint64 s1;
+  uint64 s2;
+  uint64 s3;
+  uint64 s4;
+  uint64 s5;
+  uint64 s6;
+  uint64 s7;
+  uint64 s8;
+  uint64 s9;
+  uint64 s10;
+  uint64 s11;
+};
 
 struct thread {
-  char       stack[STACK_SIZE]; /* the thread's stack */
+  char       stack[STACK_SIZE]; /* the thread's stack */        //应该不用malloc申请额外的栈空间
   int        state;             /* FREE, RUNNING, RUNNABLE */
+  struct     context context;   //线程的上下文
 
 };
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
-extern void thread_switch(uint64, uint64);
+extern void thread_switch(uint64, uint64);  //为什么参数是uint64而不是struct context*呢？
+// extern void thread_switch(struct context*, struct context*);
               
 void 
-thread_init(void)
+thread_init(void)                           //启动线程，只运行一次
 {
   // main() is thread 0, which will make the first invocation to
   // thread_schedule().  it needs a stack so that the first thread_switch() can
@@ -63,6 +84,7 @@ thread_schedule(void)
      * Invoke thread_switch to switch from t to next_thread:
      * thread_switch(??, ??);
      */
+    thread_switch((uint64)&t->context, (uint64)&current_thread->context);
   } else
     next_thread = 0;
 }
@@ -77,6 +99,10 @@ thread_create(void (*func)())
   }
   t->state = RUNNABLE;
   // YOUR CODE HERE
+  //执行完create函数后通过ra跳转到func继续执行
+  memset(&t->context, 0, sizeof(t->context));
+  t->context.ra=(uint64)func;
+  t->context.sp=(uint64)t->stack+STACK_SIZE;
 }
 
 void 
