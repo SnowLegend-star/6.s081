@@ -102,7 +102,7 @@ thread_create(void (*func)())
   //执行完create函数后通过ra跳转到func继续执行
   memset(&t->context, 0, sizeof(t->context));
   t->context.ra=(uint64)func;
-  t->context.sp=(uint64)t->stack+STACK_SIZE;
+  t->context.sp=(uint64)t->stack+STACK_SIZE-1;      //这里得减1
 }
 
 void 
