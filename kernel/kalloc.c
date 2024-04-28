@@ -109,21 +109,27 @@ kalloc(void)
         continue;
       acquire(&kmem[i].lock);
       // if (kmem[i].freelist && kmem[i].freelist->next)
-      if (kmem[i].freelist)
+      if (kmem[i].freelist)             //如果当前CPU的freelist只有一个buf了，也直接抢走
       {
-        // 从第一个不空的CPU的freelist截取后半段，同时这个freelist得大于等于两个PAGE
+        // 从第一个不空的CPU的freelist截取后半段
         struct run *tmp = kmem[i].freelist;
         node_steal = kmem[i].freelist;
         for (int j = 1; j < kmem[i].sz / 2; j++)   //西巴，千算万算没看懂这里混进去了i
         {
-          // tmp=tmp->next;
+          tmp=tmp->next;
         }
         // 已经遍历到了当前freelist的中间部分
         kmem[i].freelist=tmp->next;
         tmp->next = (void *)0;        // 截断当前的freelist
         r = node_steal;
-        kmem[i].sz-=kmem[i].sz/2;
-        kmem[cpuid_Cur].sz=kmem[i].sz/2;
+        if(kmem[i].sz==1){
+          kmem[i].sz=0;
+          kmem[cpuid_Cur].sz=1;
+        }
+        else{
+          kmem[i].sz-=kmem[i].sz/2;
+          kmem[cpuid_Cur].sz=kmem[i].sz/2;
+        }
         release(&kmem[i].lock);
         break;                        //找到合适的freelist就直接退出
       }
