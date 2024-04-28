@@ -61,7 +61,6 @@ binit(void)
 {
 struct buf *b;
 // struct buf *tmp;
-//  initlock(&bcache.lock, "bcache");
   
   for(int i=0; i<NBUCKET; i++){
     initlock(&bcache.Hash_Bucket[i].lock, "bcache");             //把整个缓冲区的大锁换成每个哈希桶的小锁
@@ -80,12 +79,6 @@ struct buf *b;
     bcache.Hash_Bucket[i%NBUCKET].head.next->prev=b;
     bcache.Hash_Bucket[i%NBUCKET].head.next=b;
     
-    // b->next = bcache.Hash_Bucket[0].head.next;
-    // b->prev = &bcache.Hash_Bucket[0].head;
-    // initsleeplock(&b->lock, "buffer");
-    // bcache.Hash_Bucket[0].head.next->prev=b;
-    // bcache.Hash_Bucket[0].head.next=b;
-
     // printf("bucket[%d]的内容如下：", i%NBUCKET);
     // for(tmp=bcache.Hash_Bucket[i%NBUCKET].head.next; tmp!=&bcache.Hash_Bucket[i%NBUCKET].head; tmp=tmp->next){
     //   printf("%p ",tmp);
@@ -112,8 +105,6 @@ bget(uint dev, uint blockno)
 {
   struct buf *b;
   int index=Hash(blockno);    //查找当前块应该在哪个bucket里面
-
-  // acquire(&bcache.lock);
 
   // // Is the block already cached?
   acquire(&bcache.Hash_Bucket[index].lock);         //先获得这个bucket的自旋锁
@@ -168,15 +159,15 @@ bget(uint dev, uint blockno)
   }
 
   if(buf_available){
-    b->dev = dev;
-    b->blockno = blockno;
-    b->valid = 0;
-    b->refcnt = 1;
+    buf_available->dev = dev;               //原来这里写成b->dev了，可恶啊啊啊啊
+    buf_available->blockno = blockno;
+    buf_available->valid = 0;
+    buf_available->refcnt = 1;
 
     //从原来的bucket中取出这个buf
     acquire(&bcache.Hash_Bucket[buf_from].lock);
-    buf_available->next->prev = buf_available->prev;
     buf_available->prev->next = buf_available->next;
+    buf_available->next->prev = buf_available->prev;
     release(&bcache.Hash_Bucket[buf_from].lock);
 
     //把这个空闲buf插入到bucket[index]中   头插法
@@ -227,20 +218,6 @@ brelse(struct buf *b)
     panic("brelse");
 
   releasesleep(&b->lock);
-
-  // acquire(&bcache.lock);
-  // b->refcnt--;
-  // if (b->refcnt == 0) {
-  //   // no one is waiting for it.
-    // b->next->prev = b->prev;
-    // b->prev->next = b->next;
-    // b->next = bcache.head.next;
-    // b->prev = &bcache.head;
-    // bcache.head.next->prev = b;
-    // bcache.head.next = b;
-  // }
-  
-  // release(&bcache.lock);
 
   int index=Hash(b->blockno);
   acquire(&bcache.Hash_Bucket[index].lock);
