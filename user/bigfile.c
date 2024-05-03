@@ -9,6 +9,7 @@ main()
 {
   char buf[BSIZE];
   int fd, i, blocks;
+  // int j=0;
 
   fd = open("big.file", O_CREATE | O_WRONLY);
   if(fd < 0){
@@ -25,6 +26,8 @@ main()
     blocks++;
     if (blocks % 100 == 0)
       printf(".");
+    // printf("i: %d\n", j);
+    // j++;
   }
 
   printf("\nwrote %d blocks\n", blocks);
