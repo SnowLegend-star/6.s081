@@ -82,9 +82,29 @@ testsymlink(void)
   fd2 = open("/testsymlink/b", O_RDWR);
   if(fd2 < 0)
     fail("failed to open b");
+  // char buf1[4];   
+  // char tmp;
+  // read(fd2, buf1, 4);
+  // printf("The buf read from b is: %s\n",buf);
   read(fd2, &c, 1);
-  if (c != 'a')
+  if (c != 'a'){
+    // printf("The char read from b is: %c\n",c);
+    
+    // printf("采用一个字节一个字节读取fd2得到的结果如下: \n");
+    // while(c!='\0'){
+    //   printf("%c",c);
+    //   read(fd2, &c, 1);
+    // }
+    // printf("\n");
+    // read(fd2, &tmp, 1);
+    // printf("The tmp read from b is: %c\n",tmp);
+    // read(fd2, &tmp, 1);
+    // printf("The tmp read from b is: %c\n",tmp);
+    // read(fd2, buf1, 4);
+    // printf("The buf read from b is: %s\n",buf);
+
     fail("failed to read bytes from b");
+  }
 
   unlink("/testsymlink/a");
   if(open("/testsymlink/b", O_RDWR) >= 0)
