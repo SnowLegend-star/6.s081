@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sleeplock.h"
+#include "fs.h"     //在这里写个fs.c，真是老眼昏花
+#include "file.h"
+#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -67,7 +71,47 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } 
+  else if(r_scause() == 13 || r_scause()==15){
+    uint64 pa;    
+    uint64 addr=PGROUNDDOWN(r_stval());
+    struct VMA *vma=0;
+    int i;
+
+    if(addr >= p->sz || addr < PGROUNDDOWN(p->trapframe->sp))
+      exit(-1);
+
+    //找到出错的VMA
+    for(i=0;i<VMASIZE;i++)
+      if(p->VMA[i].addr && p->VMA[i].addr <= addr && p->VMA[i].addr + p->VMA[i].length >addr){
+        vma=&p->VMA[i];
+      }
+    if(i>VMASIZE)  //没有找到合适的VMA元素，直接退出
+      exit(-1);
+
+    //找到了vma，说明是mmap导致的缺页错误
+    if((pa=(uint64)kalloc())==0)
+      exit(-1);
+    memset((char*)pa, 0, PGSIZE);
+
+  int perm = PTE_U;
+  if(vma->prot & PROT_READ)
+    perm |= PTE_R;
+  if(vma->prot & PROT_WRITE)
+    perm |= PTE_W;
+  if(vma->prot & PROT_EXEC)
+    perm |= PTE_X;
+
+  if((mappages(p->pagetable, addr, PGSIZE, (uint64) pa, perm)) < 0){
+    exit(-1);
+  }
+
+  //将映射的文件读入pa中
+  ilock(vma->f->ip);
+  readi(vma->f->ip, 0, pa, addr - vma->addr, PGSIZE);
+  iunlock(vma->f->ip);
+  }
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;

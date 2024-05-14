@@ -15,6 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "memlayout.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -484,3 +485,166 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap(){
+  int fd, length, prot, flags, offset;
+  uint64 addr;
+  struct file *f;
+  struct proc *p=myproc();
+  int i;
+
+  //读入mmap需要的六个参数
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &prot) < 0 ||
+      argint(3, &flags) < 0 || argfd(4, &fd, &f) < 0 || argint(5, &offset) < 0)
+      return -1;
+
+  // f=p->ofile[fd];
+  if( !(f->writable) && (prot & PROT_WRITE) && (flags == MAP_SHARED))
+    return -1;
+
+
+  for(i=0; i < VMASIZE; i++){
+    if(p->VMA[i].valid==0){                       //默认值0代表可用
+      // p->VMA[i].addr=MMAPADDR + PGSIZE*i*3;         //把第i个VMA元素映射到对应的位置
+      p->VMA[i].addr=p->sz;
+      p->VMA[i].length=length;
+      p->VMA[i].prot=prot;
+      p->VMA[i].flags=flags;
+      p->VMA[i].fd=fd;
+      p->VMA[i].offset=offset;
+      p->VMA[i].f=filedup(f);
+      p->VMA[i].valid=1;
+      break;
+    }
+  }
+  if(i == VMASIZE)    //当前进程没有空闲的VMA元素了
+    return -1;
+  p->sz+=length;
+  return p->VMA[i].addr;
+}
+
+uint64
+sys_munmap(){
+  uint64 addr;
+  int length;
+
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0)
+    return -1;
+  
+  if(addr%PGSIZE || length<0 )
+    return -1;
+  
+  return (uint64)munmap_Real(addr, length);
+}
+
+int munmap_Real(uint64 addr, int length){
+  int i;
+  struct VMA *vma=0;
+  struct proc *p=myproc();
+
+    //寻找对应的VMA
+  for(i=0; i<VMASIZE; i++){
+    vma=&p->VMA[i];
+    if(p->VMA[i].valid==1 && addr>= p->VMA[i].addr && addr+length < p->VMA[i].addr + p->VMA[i].length){
+
+      break;
+    }
+    // vma = p->VMA + i;
+    // if (vma->valid == 1 && addr >= vma->addr && (addr + length) < (vma->addr + vma->length)) {
+    //   break;
+    // }
+  }
+  if(i>VMASIZE)
+    return -1;
+
+  //将数据写回shared类型的文件中
+  uint64 begin=addr;
+  uint64 end=addr+length;
+  if(vma->flags==MAP_SHARED && vma->f->writable){
+    uint64 addr_Cur=begin;
+    while(addr_Cur < end){
+      int sz=end-addr_Cur>=PGSIZE?PGSIZE:end-addr_Cur; //这里把sz的大小限制为PGSIZE是为了好调用uvmunmap
+      begin_op();
+      ilock(vma->f->ip);
+      if(writei(vma->f->ip, 1, addr_Cur, addr_Cur-vma->addr,sz) != sz)
+        return -1;
+      iunlock(vma->f->ip);
+      end_op();
+      uvmunmap(p->pagetable, addr_Cur,1,1);
+      addr_Cur+=PGSIZE;
+    }
+  }
+
+  //写回结束后，更新vma的内容
+  if(addr==vma->addr){   //说明addr是mmap的头部
+    vma->addr+=length;
+    vma->length-=length;
+  }
+  else if(addr+length==vma->addr+vma->length){  //说明释放了vma的尾部
+    vma->length-=length;
+  }
+
+  //如果vma全部被释放，则要释放对file的引用
+  if(vma->length ==0 && vma->valid==1){
+    // fileclose(vma->f);
+    filedup(vma->f);
+    vma->valid=0;
+    vma->addr=0;
+    vma->f=0;
+    vma->fd=-1;
+    vma->flags=0;
+    vma->length=0;
+    vma->offset=0;
+    vma->prot=0;
+  }
+  return 0;
+}
+
+// int munmap_Real(uint64 addr, int length){
+//   struct proc *p = myproc();
+
+//   // 在 vma pool 中找到 addr 对应的 vma
+//   struct VMA *vma = 0;
+//   int i;
+  // for (i = 0; i < VMASIZE; i++) {
+  //   vma = p->VMA + i;
+  //   if (vma->valid == 1 && addr >= vma->addr && (addr + length) < (vma->addr + vma->length)) {
+  //     break;
+  //   }
+  // }
+  // if (i > VMASIZE) {
+  //   return -1;
+  // }
+//   // 根据 vma 的信息，将数据回写入文件中
+//   uint64 begin_addr = addr;
+//   uint64 end_addr = addr + length;
+//   if (vma->flags == MAP_SHARED && vma->f->writable) {
+//     uint64 cur_addr = begin_addr;
+//     while (cur_addr < end_addr) {
+//       int sz = end_addr - cur_addr >= PGSIZE? PGSIZE: end_addr - cur_addr;
+//       begin_op();
+//       ilock(vma->f->ip);
+//       if (writei(vma->f->ip, 1, cur_addr, cur_addr - vma->addr, sz) != sz) {
+//         return -1;
+//       }
+//       iunlock(vma->f->ip);
+//       end_op();
+//       uvmunmap(p->pagetable, cur_addr, 1, 1);
+//       cur_addr += PGSIZE;
+//     }
+//   }
+//   // 完成回写后，更新 vma 中的信息
+//   if (addr == vma->addr) {  // 说明 addr 是 mmap 内存的头部
+//     vma->addr += length;
+//     vma->length -= length;
+//   } else if (addr + length == vma->addr + vma->length) { // 说明 addr 是 mmap 的尾部
+//     vma->length -= length;
+//   }
+//   // 如果 mmap 的内存全部被 munmmap，那需要释放 vma 以及对 file 的引用
+//   if (vma->length == 0 && vma->valid == 1) {
+//     filedup(vma->f);
+//     vma->valid = 0;
+//   }
+//   return 0;
+// }

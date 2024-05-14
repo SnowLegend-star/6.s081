@@ -134,6 +134,10 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  
+  for(int i=0;i<VMASIZE;i++)
+    p->VMA[i].valid=0;
+
   return p;
 }
 
@@ -296,6 +300,14 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  //拷贝父进程的VMA给子进程
+  for(int i=0; i<VMASIZE; i++){
+    if(p->VMA[i].valid==1){
+      memmove(&np->VMA[i], &p->VMA[i], sizeof(struct VMA));
+      filedup(np->VMA[i].f);
+    }
+  }
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -350,6 +362,15 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  //释放进程的VMA
+  for(int i=0; i<VMASIZE; i++){
+    if(p->VMA[i].valid==0)
+      continue;
+    if(munmap_Real(p->VMA[i].addr, p->VMA[i].length)!=0){
+      panic("Something wrong with munmap when exit.");
     }
   }
 
