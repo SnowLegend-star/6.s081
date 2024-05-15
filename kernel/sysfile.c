@@ -506,8 +506,8 @@ sys_mmap(){
 
   for(i=0; i < VMASIZE; i++){
     if(p->VMA[i].valid==0){                       //默认值0代表可用
-      // p->VMA[i].addr=MMAPADDR + PGSIZE*i*3;         //把第i个VMA元素映射到对应的位置
-      p->VMA[i].addr=p->sz;
+      // p->VMA[i].addr=MMAPADDR + PGSIZE*i*3;         //把第i个VMA元素映射到对应的位置   这种映射有问题
+      p->VMA[i].addr=MMAPADDR + PGSIZE*i*3;
       p->VMA[i].length=length;
       p->VMA[i].prot=prot;
       p->VMA[i].flags=flags;
@@ -543,20 +543,19 @@ int munmap_Real(uint64 addr, int length){
   struct VMA *vma=0;
   struct proc *p=myproc();
 
-    //寻找对应的VMA
+  //*******************************
+  //寻找对应的VMA
   for(i=0; i<VMASIZE; i++){
-    vma=&p->VMA[i];
+    vma=&p->VMA[i];           //这里的vma赋值语句也要放在if语句外
     if(p->VMA[i].valid==1 && addr>= p->VMA[i].addr && addr+length < p->VMA[i].addr + p->VMA[i].length){
-
       break;
     }
-    // vma = p->VMA + i;
-    // if (vma->valid == 1 && addr >= vma->addr && (addr + length) < (vma->addr + vma->length)) {
-    //   break;
-    // }
   }
-  if(i>VMASIZE)
+  if(i>VMASIZE){              //这里改为i==VMASIZE也会出问题，太奇怪了
+    printf("i的值是: %d\n", i);
     return -1;
+  }
+  //*******************************          玄学代码
 
   //将数据写回shared类型的文件中
   uint64 begin=addr;
@@ -587,8 +586,8 @@ int munmap_Real(uint64 addr, int length){
 
   //如果vma全部被释放，则要释放对file的引用
   if(vma->length ==0 && vma->valid==1){
-    // fileclose(vma->f);
-    filedup(vma->f);
+    fileclose(vma->f);
+    // filedup(vma->f);
     vma->valid=0;
     vma->addr=0;
     vma->f=0;
@@ -600,51 +599,3 @@ int munmap_Real(uint64 addr, int length){
   }
   return 0;
 }
-
-// int munmap_Real(uint64 addr, int length){
-//   struct proc *p = myproc();
-
-//   // 在 vma pool 中找到 addr 对应的 vma
-//   struct VMA *vma = 0;
-//   int i;
-  // for (i = 0; i < VMASIZE; i++) {
-  //   vma = p->VMA + i;
-  //   if (vma->valid == 1 && addr >= vma->addr && (addr + length) < (vma->addr + vma->length)) {
-  //     break;
-  //   }
-  // }
-  // if (i > VMASIZE) {
-  //   return -1;
-  // }
-//   // 根据 vma 的信息，将数据回写入文件中
-//   uint64 begin_addr = addr;
-//   uint64 end_addr = addr + length;
-//   if (vma->flags == MAP_SHARED && vma->f->writable) {
-//     uint64 cur_addr = begin_addr;
-//     while (cur_addr < end_addr) {
-//       int sz = end_addr - cur_addr >= PGSIZE? PGSIZE: end_addr - cur_addr;
-//       begin_op();
-//       ilock(vma->f->ip);
-//       if (writei(vma->f->ip, 1, cur_addr, cur_addr - vma->addr, sz) != sz) {
-//         return -1;
-//       }
-//       iunlock(vma->f->ip);
-//       end_op();
-//       uvmunmap(p->pagetable, cur_addr, 1, 1);
-//       cur_addr += PGSIZE;
-//     }
-//   }
-//   // 完成回写后，更新 vma 中的信息
-//   if (addr == vma->addr) {  // 说明 addr 是 mmap 内存的头部
-//     vma->addr += length;
-//     vma->length -= length;
-//   } else if (addr + length == vma->addr + vma->length) { // 说明 addr 是 mmap 的尾部
-//     vma->length -= length;
-//   }
-//   // 如果 mmap 的内存全部被 munmmap，那需要释放 vma 以及对 file 的引用
-//   if (vma->length == 0 && vma->valid == 1) {
-//     filedup(vma->f);
-//     vma->valid = 0;
-//   }
-//   return 0;
-// }

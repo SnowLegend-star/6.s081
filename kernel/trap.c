@@ -94,22 +94,23 @@ usertrap(void)
       exit(-1);
     memset((char*)pa, 0, PGSIZE);
 
-  int perm = PTE_U;
-  if(vma->prot & PROT_READ)
-    perm |= PTE_R;
-  if(vma->prot & PROT_WRITE)
-    perm |= PTE_W;
-  if(vma->prot & PROT_EXEC)
-    perm |= PTE_X;
+    //给新的pte设置perm
+    int perm = PTE_U;
+    if(vma->prot & PROT_READ)
+      perm |= PTE_R;
+    if(vma->prot & PROT_WRITE)
+      perm |= PTE_W;
+    if(vma->prot & PROT_EXEC)
+      perm |= PTE_X;
 
-  if((mappages(p->pagetable, addr, PGSIZE, (uint64) pa, perm)) < 0){
-    exit(-1);
-  }
+    if((mappages(p->pagetable, addr, PGSIZE, (uint64) pa, perm)) < 0){
+      exit(-1);
+    }
 
-  //将映射的文件读入pa中
-  ilock(vma->f->ip);
-  readi(vma->f->ip, 0, pa, addr - vma->addr, PGSIZE);
-  iunlock(vma->f->ip);
+    //将映射的文件读入pa中
+    ilock(vma->f->ip);
+    readi(vma->f->ip, 0, pa, addr - vma->addr, PGSIZE);
+    iunlock(vma->f->ip);
   }
   else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
