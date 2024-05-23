@@ -102,8 +102,38 @@ e1000_transmit(struct mbuf *m)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after sending.
   //
-  
+  // printf("This is transmit.\n");
+  // acquire(&e1000_lock);
+  //获取下一个可以发生数据包的位置
+  int tail=regs[E1000_TDT];
+
+  //检查环是否溢出
+  if(!(tx_ring[tail].status & E1000_TXD_STAT_DD)){
+    //如果描述符中的DD未设置，则表示环溢出
+    release(&e1000_lock);
+    return -1;
+  }
+
+  //释放上一个传输的mbuf(如果有的话)
+  if(tx_mbufs[tail]!=0){
+    mbuffree(tx_mbufs[tail]);
+  }
+
+  //填充描述符
+  tx_ring[tail].addr=(uint64)m->head;
+  tx_ring[tail].length=m->len;
+  tx_ring[tail].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;       //必须加上EOP啊？意思是每条报文的长度都不超过MTU是吗
+  tx_ring[tail].status=E1000_TXD_STAT_DD;
+  tx_mbufs[tail]=m;
+
+  __sync_synchronize();
+
+  //更新环的位置
+  tail=(tail+1)%TX_RING_SIZE;
+  regs[E1000_TDT]=tail;
+  // release(&e1000_lock);
   return 0;
+
 }
 
 static void
@@ -115,6 +145,34 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+  // printf("Here we should receive something.\n");
+  acquire(&e1000_lock);
+  //获取下一个等待接收数据包所在的环索引
+  int tail=(regs[E1000_RDT]+1)%RX_RING_SIZE;
+
+  //检查数据包是否可用
+  // if(!(rx_ring[tail].status && E1000_RXD_STAT_DD) ){
+  //   release(&e1000_lock);
+  //   return ;
+  // }
+  while(rx_ring[tail].status && E1000_RXD_STAT_DD ){
+    //更新mbuf元素
+    rx_mbufs[tail]->len=rx_ring[tail].length;
+
+    //将mbuf传送到网络栈
+    net_rx(rx_mbufs[tail]);
+
+    rx_mbufs[tail]=mbufalloc(0);
+    if (!rx_mbufs[tail])
+      panic("e1000");
+    rx_ring[tail].addr=(uint64)rx_mbufs[tail]->head;
+    rx_ring[tail].status=0;
+
+    tail=(tail+1)%RX_RING_SIZE;
+  }
+
+  regs[E1000_RDT]=tail-1;
+  release(&e1000_lock);
 }
 
 void
