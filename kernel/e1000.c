@@ -103,7 +103,7 @@ e1000_transmit(struct mbuf *m)
   // a pointer so that it can be freed after sending.
   //
   // printf("This is transmit.\n");
-  // acquire(&e1000_lock);
+  // acquire(&e1000_lock);                                      //不可以加锁，真是奇怪
   //获取下一个可以发生数据包的位置
   int tail=regs[E1000_TDT];
 
@@ -126,7 +126,7 @@ e1000_transmit(struct mbuf *m)
   tx_ring[tail].status=E1000_TXD_STAT_DD;
   tx_mbufs[tail]=m;
 
-  __sync_synchronize();
+  // __sync_synchronize();                                        //加上会更好，不加也可以
 
   //更新环的位置
   tail=(tail+1)%TX_RING_SIZE;
@@ -155,7 +155,7 @@ e1000_recv(void)
   //   release(&e1000_lock);
   //   return ;
   // }
-  while(rx_ring[tail].status && E1000_RXD_STAT_DD ){
+  while(rx_ring[tail].status && E1000_RXD_STAT_DD ){    //循环是为了解决到达的数据包超过16的问题
     //更新mbuf元素
     rx_mbufs[tail]->len=rx_ring[tail].length;
 
